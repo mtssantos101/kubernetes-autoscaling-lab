@@ -8,28 +8,28 @@ APP_PORT="${APP_PORT:-8080}"
 MIN_REPLICAS="${MIN_REPLICAS:-1}"
 MAX_REPLICAS="${MAX_REPLICAS:-5}"
 CPU_TARGET="${CPU_TARGET:-60}"
-BUILD_IMAGE="${BUILD_IMAGE:-false}"
 BUILD_CONTEXT="${BUILD_CONTEXT:-.}"
 DOCKERFILE="${DOCKERFILE:-Dockerfile}"
 KIND_CLUSTER="${KIND_CLUSTER:-}"
+LOCAL_MODE="false"
 
 parse_arguments() {
   while (($# > 0)); do
     case "$1" in
-      --build-image)
-        BUILD_IMAGE=true
+      --local)
+        LOCAL_MODE=true
         if [[ -z "$APP_IMAGE" ]]; then
           APP_IMAGE="${APP_NAME}:local"
         fi
         ;;
       -h|--help)
-        echo "Uso: $0 [--build-image]"
-        echo "  --build-image  Constrói APP_IMAGE localmente e carrega em Kind/Minikube."
+        echo "Uso: $0 [--local]"
+        echo "  --local  Constrói a aplicação e configura Kind com KWOK e Karpenter KWOK."
         exit 0
         ;;
       *)
         echo "ERRO: argumento desconhecido: $1" >&2
-        echo "Uso: $0 [--build-image]" >&2
+        echo "Uso: $0 [--local]" >&2
         exit 2
         ;;
     esac
@@ -46,11 +46,17 @@ check_commands() {
     }
   done
 
-  if [[ "$BUILD_IMAGE" == "true" ]]; then
+  if [[ "$LOCAL_MODE" == "true" ]]; then
     command -v docker >/dev/null 2>&1 || {
-      echo "ERRO: BUILD_IMAGE=true requer Docker instalado." >&2
+      echo "ERRO: --local requer Docker instalado." >&2
       exit 1
     }
+    for cmd in kind git make go ko; do
+      command -v "$cmd" >/dev/null 2>&1 || {
+        echo "ERRO: --local requer o comando $cmd instalado." >&2
+        exit 1
+      }
+    done
   fi
 }
 
@@ -59,60 +65,82 @@ validate_config() {
     echo "ERRO: defina APP_IMAGE (por exemplo, APP_IMAGE=messages-api:1.0)." >&2
     exit 1
   fi
+}
 
-  if [[ "$BUILD_IMAGE" != "true" && "$BUILD_IMAGE" != "false" ]]; then
-    echo "ERRO: BUILD_IMAGE deve ser 'true' ou 'false'." >&2
+detect_cluster() {
+  kubectl cluster-info >/dev/null
+  CONTEXT="$(kubectl config current-context)"
+  echo "Cluster: $CONTEXT"
+  echo "Namespace: $NAMESPACE"
+
+  if [[ "$LOCAL_MODE" == "true" && "$CONTEXT" != kind-* ]]; then
+    echo "ERRO: --local requer um cluster Kind ativo (contexto kind-<nome>)." >&2
     exit 1
+  fi
+
+  if [[ "$CONTEXT" == kind-* ]]; then
+    KIND_CLUSTER="${KIND_CLUSTER:-${CONTEXT#kind-}}"
+    echo "Modo local: Kind + KWOK + Karpenter KWOK"
+  else
+    echo "Imagem: ${APP_IMAGE:-não alterada}"
+    echo "Atenção: este script não configura Karpenter nem permissões cloud."
   fi
 }
 
 build_local_image() {
-  [[ "$BUILD_IMAGE" == "true" ]] || return 0
+  [[ "$LOCAL_MODE" == "true" ]] || return 0
 
   echo "Construindo imagem local: $APP_IMAGE"
   docker build -f "$DOCKERFILE" -t "$APP_IMAGE" "$BUILD_CONTEXT"
 
-  if [[ "$CONTEXT" == *kind* ]]; then
-    command -v kind >/dev/null 2>&1 || {
-      echo "ERRO: instale kind para carregar a imagem no cluster local." >&2
-      exit 1
-    }
-    if [[ -n "$KIND_CLUSTER" ]]; then
-      kind load docker-image "$APP_IMAGE" --name "$KIND_CLUSTER"
-    else
-      kind load docker-image "$APP_IMAGE"
-    fi
-  elif [[ "$CONTEXT" == *minikube* ]]; then
-    command -v minikube >/dev/null 2>&1 || {
-      echo "ERRO: instale minikube para carregar a imagem no cluster local." >&2
-      exit 1
-    }
-    minikube image load "$APP_IMAGE"
-  else
-    echo "AVISO: imagem construída localmente; o cluster precisa conseguir acessá-la."
-  fi
+  kind load docker-image "$APP_IMAGE" --name "$KIND_CLUSTER"
 }
 
 install_cluster_dependencies() {
-
-  helm repo add karpenter https://karpenter.sh
-  helm repo update
-
-  helm install karpenter karpenter/karpenter \
-  --namespace kube-system \
-  --set cloudProvider=kwok \
-  --set controller.resources.requests.cpu=1 \
-  --set controller.resources.requests.memory=1Gi
+  if [[ "$LOCAL_MODE" == "true" ]]; then
+    install_kwok_karpenter
+  fi
 
   helm repo add kedacore https://kedacore.github.io/charts
   helm repo update
   helm upgrade --install keda kedacore/keda \
-    --namespace kube-system --create-namespace --wait --timeout 5m
+    --namespace keda --create-namespace --wait --timeout 5m
 
   helm repo add metrics-server https://kubernetes-sigs.github.io/metrics-server/
   helm repo update
   helm upgrade --install metrics-server metrics-server/metrics-server \
     --namespace kube-system --wait --timeout 5m
+}
+
+install_kwok_karpenter() {
+  KARPENTER_SOURCE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/karpenter-kwok.XXXXXX")"
+  trap 'if [[ -n "${KARPENTER_SOURCE_DIR:-}" ]]; then rm -rf -- "$KARPENTER_SOURCE_DIR"; fi' EXIT
+
+  helm repo add kwok https://kwok.sigs.k8s.io/charts/
+  helm repo update
+  helm upgrade --install kwok kwok/kwok \
+    --namespace kube-system --wait --timeout 5m
+  helm upgrade --install kwok-stage-fast kwok/stage-fast \
+    --namespace kube-system --wait --timeout 5m
+
+  echo "Obtendo o provider KWOK oficial do Karpenter..."
+  git clone --depth 1 https://github.com/kubernetes-sigs/karpenter.git "$KARPENTER_SOURCE_DIR/karpenter"
+  (
+    cd "$KARPENTER_SOURCE_DIR/karpenter"
+    KWOK_REPO=kind.local KIND_CLUSTER_NAME="$KIND_CLUSTER" make install-kwok
+    KWOK_REPO=kind.local KIND_CLUSTER_NAME="$KIND_CLUSTER" make build-with-kind
+    kubectl apply -f kwok/charts/crds
+    helm upgrade --install karpenter kwok/charts \
+      --namespace kube-system --skip-crds \
+      --set controller.image.repository=kind.local/kwok \
+      --set controller.image.tag=latest \
+      --set controller.resources.requests.cpu=1 \
+      --set controller.resources.requests.memory=1Gi \
+      --set settings.preferencePolicy=Ignore \
+      --wait --timeout 5m
+  )
+  rm -rf -- "$KARPENTER_SOURCE_DIR"
+  KARPENTER_SOURCE_DIR=""
 }
 
 create_application_namespace() {
