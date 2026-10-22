@@ -52,7 +52,7 @@ check_commands() {
       exit 1
     }
     for cmd in kind git make go ko; do
-      [[ -x "$(command -v "$cmd" 2>/dev/null)"]]  || {
+      [[ -x "$(command -v "$cmd" 2>/dev/null)" ]] || {
         echo "ERRO: --local requer o comando $cmd instalado." >&2
         exit 1
       }
@@ -121,7 +121,7 @@ install_kwok_karpenter() {
   (
     cd "$KARPENTER_SOURCE_DIR/karpenter"
     KWOK_REPO=kind.local KIND_CLUSTER_NAME="$KIND_CLUSTER" make install-kwok
-    KWOK_REPO=kind.local KIND_CLUSTER_NAME="$KIND_CLUSTER" make build-with-kind
+    KO_DOCKER_REPO=kind.local KIND_CLUSTER_NAME="$KIND_CLUSTER" ko build --bare sigs.k8s.io/karpenter/kwok
     kubectl apply -f kwok/charts/crds
     helm upgrade --install karpenter ./kwok/charts \
       --namespace kube-system --skip-crds \
