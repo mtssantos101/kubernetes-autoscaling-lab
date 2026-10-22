@@ -52,7 +52,7 @@ check_commands() {
       exit 1
     }
     for cmd in kind git make go ko; do
-      [[-x "$(command -v "$cmd" 2>/dev/null)"]]  || {
+      [[ -x "$(command -v "$cmd" 2>/dev/null)"]]  || {
         echo "ERRO: --local requer o comando $cmd instalado." >&2
         exit 1
       }
