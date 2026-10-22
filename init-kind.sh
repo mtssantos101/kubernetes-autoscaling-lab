@@ -30,6 +30,15 @@ else
     kind create cluster --name "$CLUSTER_NAME" --config "$CONFIG_FILE"
 fi
 
+for node in $(kind get nodes --name "$CLUSTER_NAME"); do
+    for cert in usr/share/ca-certificates/*.crt; do
+        [ -f "$cert" ] && docker cp "$cert" "$node:/usr/local/share/ca-certificates/"
+    done
+    docker exec "$node" sh -c 'update-ca-certificates >/dev/null && systemctl restart containerd'
+done
+
+untiil kubectl --context "kind-$CLUSTER_NAME" get --raw /readyz >/dev/null 2>&1; do sleep 3; done
+
 kubectl cluster-info --context "kind-$CLUSTER_NAME"
 
 rm $CONFIG_FILE
