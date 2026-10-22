@@ -52,7 +52,7 @@ check_commands() {
       exit 1
     }
     for cmd in kind git make go ko; do
-      command -v "$cmd" >/dev/null 2>&1 || {
+      [[-x "$(command -v "$cmd" 2>/dev/null)"]]  || {
         echo "ERRO: --local requer o comando $cmd instalado." >&2
         exit 1
       }
@@ -116,13 +116,6 @@ install_kwok_karpenter() {
   KARPENTER_SOURCE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/karpenter-kwok.XXXXXX")"
   trap 'if [[ -n "${KARPENTER_SOURCE_DIR:-}" ]]; then rm -rf -- "$KARPENTER_SOURCE_DIR"; fi' EXIT
 
-  helm repo add kwok https://kwok.sigs.k8s.io/charts/
-  helm repo update
-  helm upgrade --install kwok kwok/kwok \
-    --namespace kube-system --wait --timeout 5m
-  helm upgrade --install kwok-stage-fast kwok/stage-fast \
-    --namespace kube-system --wait --timeout 5m
-
   echo "Obtendo o provider KWOK oficial do Karpenter..."
   git clone --depth 1 https://github.com/kubernetes-sigs/karpenter.git "$KARPENTER_SOURCE_DIR/karpenter"
   (
@@ -130,7 +123,7 @@ install_kwok_karpenter() {
     KWOK_REPO=kind.local KIND_CLUSTER_NAME="$KIND_CLUSTER" make install-kwok
     KWOK_REPO=kind.local KIND_CLUSTER_NAME="$KIND_CLUSTER" make build-with-kind
     kubectl apply -f kwok/charts/crds
-    helm upgrade --install karpenter kwok/charts \
+    helm upgrade --install karpenter ./kwok/charts \
       --namespace kube-system --skip-crds \
       --set controller.image.repository=kind.local/kwok \
       --set controller.image.tag=latest \
