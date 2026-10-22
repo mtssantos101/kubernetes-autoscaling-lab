@@ -37,7 +37,7 @@ for node in $(kind get nodes --name "$CLUSTER_NAME"); do
     docker exec "$node" sh -c 'update-ca-certificates >/dev/null && systemctl restart containerd'
 done
 
-untiil kubectl --context "kind-$CLUSTER_NAME" get --raw /readyz >/dev/null 2>&1; do sleep 3; done
+until kubectl --context "kind-$CLUSTER_NAME" get --raw /readyz >/dev/null 2>&1; do sleep 3; done
 
 kubectl cluster-info --context "kind-$CLUSTER_NAME"
 
