@@ -108,8 +108,10 @@ install_cluster_dependencies() {
 
   helm repo add metrics-server https://kubernetes-sigs.github.io/metrics-server/
   helm repo update
+  local metrics_args=()
+  [[ "$LOCAL_MODE" == "true" ]] && metrics_args+=(--set 'args={--kubelet-insecure-tls}')
   helm upgrade --install metrics-server metrics-server/metrics-server \
-    --namespace kube-system --wait --timeout 5m
+    --namespace kube-system --wait --timeout 5m "${metrics_args[@]}"
 }
 
 install_kwok_karpenter() {
@@ -121,7 +123,7 @@ install_kwok_karpenter() {
   (
     cd "$KARPENTER_SOURCE_DIR/karpenter"
     KWOK_REPO=kind.local KIND_CLUSTER_NAME="$KIND_CLUSTER" make install-kwok
-    KO_DOCKER_REPO=kind.local KIND_CLUSTER_NAME="$KIND_CLUSTER" ko build --bare sigs.k8s.io/karpenter/kwok
+    KO_DOCKER_REPO=kind.local/kwok KIND_CLUSTER_NAME="$KIND_CLUSTER" ko build --bare sigs.k8s.io/karpenter/kwok
     kubectl apply -f kwok/charts/crds
     helm upgrade --install karpenter ./kwok/charts \
       --namespace kube-system --skip-crds \
@@ -130,6 +132,8 @@ install_kwok_karpenter() {
       --set controller.resources.requests.cpu=1 \
       --set controller.resources.requests.memory=1Gi \
       --set settings.preferencePolicy=Ignore \
+      --set settings.featureGates.staticCapacitty=false \
+      --set settings.featureGates.capacityBuffer=false \
       --wait --timeout 5m
   )
   rm -rf -- "$KARPENTER_SOURCE_DIR"
