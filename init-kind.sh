@@ -31,7 +31,7 @@ else
 fi
 
 for node in $(kind get nodes --name "$CLUSTER_NAME"); do
-    for cert in usr/share/ca-certificates/*.crt; do
+    for cert in usr/local/share/ca-certificates/*.crt; do
         [ -f "$cert" ] && docker cp "$cert" "$node:/usr/local/share/ca-certificates/"
     done
     docker exec "$node" sh -c 'update-ca-certificates >/dev/null && systemctl restart containerd'
