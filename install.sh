@@ -132,7 +132,7 @@ install_kwok_karpenter() {
       --set controller.resources.requests.cpu=1 \
       --set controller.resources.requests.memory=1Gi \
       --set settings.preferencePolicy=Ignore \
-      --set settings.featureGates.staticCapacitty=false \
+      --set settings.featureGates.staticCapacity=false \
       --set settings.featureGates.capacityBuffer=false \
       --wait --timeout 5m
   )
