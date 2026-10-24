@@ -10,6 +10,10 @@ alloy:
 
       discovery.kubernetes "pods" {
         role = "pod"
+
+        namespaces {
+          names = ["${NAMESPACE}"]
+        }
       }
 
       discovery.relabel "pods" {

@@ -349,7 +349,7 @@ install_observability_tools() {
 
   helm upgrade --install alloy grafana/alloy \
     --namespace monitoring --create-namespace --wait --timeout 5m \
-    --values "$SCRIPT_DIR/monitoring/alloy-values.yaml"
+    --values <(envsubst '${NAMESPACE}' < "$SCRIPT_DIR/monitoring/alloy-values.yaml")
 
   kubectl create configmap kafka-worker-dashboard \
     --namespace monitoring \
