@@ -2,12 +2,15 @@ package com.kafka_worker.messaging;
 
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 
 @Service
 public class MessageProducer {
+    private static final Logger logger = LoggerFactory.getLogger(MessageProducer.class);
     private static final String TOPIC = "message.sended";
 
     private final KafkaTemplate<String, String> kafkaTemplate;
@@ -27,13 +30,15 @@ public class MessageProducer {
                 .whenComplete((result, exception) -> {
                     if (exception != null) {
                         publishErrors.increment();
-                        System.err.println("Erro ao publicar mensagem: " + exception.getMessage());
+                        logger.error("Falha ao publicar mensagem no tópico {}", TOPIC, exception);
                         return;
                     }
 
                     published.increment();
-                    System.out.println("Mensagem publicada: "
-                            + result.getRecordMetadata().offset());
+                    logger.info("Mensagem publicada no tópico {}, partição {}, offset {}",
+                            TOPIC,
+                            result.getRecordMetadata().partition(),
+                            result.getRecordMetadata().offset());
                 });
     }
 }
