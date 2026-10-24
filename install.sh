@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-NAMESPACE="${NAMESPACE:-lab}"
+NAMESPACE="${NAMESPACE:-autoscaling-lab}"
 APP_NAME="${APP_NAME:-messages-api}"
 APP_IMAGE="${APP_IMAGE:-}"
 APP_PORT="${APP_PORT:-8080}"
 MIN_REPLICAS="${MIN_REPLICAS:-1}"
-MAX_REPLICAS="${MAX_REPLICAS:-5}"
+MAX_REPLICAS="${MAX_REPLICAS:-10}"
 CPU_TARGET="${CPU_TARGET:-60}"
 BUILD_CONTEXT="${BUILD_CONTEXT:-.}"
 DOCKERFILE="${DOCKERFILE:-Dockerfile}"
@@ -261,6 +261,17 @@ spec:
               value: ${KAFKA_BOOTSTRAP_SERVERS}
           ports:
             - containerPort: ${APP_PORT}
+          startupProbe:
+            tcpSocket:
+              port: ${APP_PORT}
+            periodSeconds: 5
+            failureThreshold: 36
+          readinessProbe:
+            tcpSocket:
+              port: ${APP_PORT}
+            periodSeconds: 5
+            timeoutSeconds: 1
+            failureThreshold: 3
           resources:
             requests:
               cpu: 100m
@@ -308,6 +319,27 @@ wait_for_deployment() {
   kubectl rollout status "deployment/$APP_NAME" -n "$NAMESPACE" --timeout=180s
 }
 
+install_observability_tools() {
+  echo "Instalando ferramentas de observabilidade (Prometheus, Grafana, Kiali)..."
+  helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+  helm repo add grafana-community https://grafana-community.github.io/helm-charts
+  helm repo add kiali https://kiali.org/helm-charts
+  helm repo update
+
+  helm upgrade --install prometheus prometheus-community/prometheus \
+    --namespace monitoring --create-namespace --wait --timeout 5m
+
+  helm upgrade --install grafana grafana-community/grafana \
+    --namespace monitoring --create-namespace --wait --timeout 5m \
+    --set adminPassword=admin \
+    --set service.type=ClusterIP \
+    --set persistence.enabled=false
+
+  helm upgrade --install kiali kiali/kiali-server \
+    --namespace monitoring --create-namespace --wait --timeout 5m \
+    --set auth.strategy=anonymous
+}
+
 main() {
   parse_arguments "$@"
   validate_config
@@ -319,6 +351,7 @@ main() {
   install_local_kafka
   deploy_application
   wait_for_deployment
+  install_observability_tools
 }
 
 main "$@"
