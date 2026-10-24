@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+
 NAMESPACE="${NAMESPACE:-autoscaling-lab}"
 APP_NAME="${APP_NAME:-messages-api}"
 APP_IMAGE="${APP_IMAGE:-}"
@@ -251,6 +253,10 @@ spec:
     metadata:
       labels:
         app: ${APP_NAME}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: /actuator/prometheus
+        prometheus.io/port: "${APP_PORT}"
     spec:
       containers:
         - name: app
@@ -333,7 +339,8 @@ install_observability_tools() {
     --namespace monitoring --create-namespace --wait --timeout 5m \
     --set adminPassword=admin \
     --set service.type=ClusterIP \
-    --set persistence.enabled=false
+    --set persistence.enabled=false \
+    --values "$SCRIPT_DIR/monitoring/grafana-values.yaml"
 
   helm upgrade --install kiali kiali/kiali-server \
     --namespace monitoring --create-namespace --wait --timeout 5m \
