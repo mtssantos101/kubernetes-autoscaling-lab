@@ -1,0 +1,63 @@
+{
+  "id": null,
+  "uid": "kafka-worker-overview",
+  "title": "Kafka Worker - Visão geral",
+  "tags": ["kafka-worker", "spring-boot"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Mensagens publicadas / s",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 0 },
+      "targets": [{ "expr": "sum(rate(kafka_messages_published_total[5m]))", "legendFormat": "publicadas", "refId": "A" }]
+    },
+    {
+      "id": 2,
+      "title": "Mensagens consumidas / s",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 0 },
+      "targets": [{ "expr": "sum(rate(kafka_messages_consumed_total[5m]))", "legendFormat": "consumidas", "refId": "A" }]
+    },
+    {
+      "id": 3,
+      "title": "Falhas ao publicar / s",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 0 },
+      "targets": [{ "expr": "sum(rate(kafka_messages_publish_errors_total[5m]))", "legendFormat": "falhas", "refId": "A" }]
+    },
+    {
+      "id": 4,
+      "title": "Requisições HTTP / s",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [{ "expr": "sum(rate(http_server_requests_seconds_count{uri=\"/messages\"}[5m]))", "legendFormat": "{{method}} {{status}}", "refId": "A" }]
+    },
+    {
+      "id": 5,
+      "title": "Latência HTTP p95",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [{ "expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_requests_seconds_bucket{uri=\"/messages\"}[5m])))", "legendFormat": "p95", "refId": "A" }]
+    },
+    {
+      "id": 6,
+      "title": "Logs dos pods",
+      "type": "logs",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 16 },
+      "targets": [{ "expr": "{app=\"messages-api\"}", "queryType": "range", "refId": "A" }],
+      "options": { "showTime": true, "showLabels": true, "sortOrder": "Descending", "wrapLogMessage": true }
+    }
+  ]
+}

@@ -326,11 +326,16 @@ wait_for_deployment() {
 }
 
 install_observability_tools() {
-  echo "Instalando ferramentas de observabilidade (Prometheus, Grafana, Kiali)..."
+  echo "Instalando ferramentas de observabilidade (Prometheus, Loki, Alloy, Grafana, Kiali)..."
   helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
   helm repo add grafana-community https://grafana-community.github.io/helm-charts
+  helm repo add grafana https://grafana.github.io/helm-charts
   helm repo add kiali https://kiali.org/helm-charts
   helm repo update
+
+  helm upgrade --install loki grafana-community/loki \
+    --namespace monitoring --create-namespace --wait --timeout 10m \
+    --values "$SCRIPT_DIR/monitoring/loki-values.yaml"
 
   helm upgrade --install prometheus prometheus-community/prometheus \
     --namespace monitoring --create-namespace --wait --timeout 5m
@@ -341,6 +346,17 @@ install_observability_tools() {
     --set service.type=ClusterIP \
     --set persistence.enabled=false \
     --values "$SCRIPT_DIR/monitoring/grafana-values.yaml"
+
+  helm upgrade --install alloy grafana/alloy \
+    --namespace monitoring --create-namespace --wait --timeout 5m \
+    --values "$SCRIPT_DIR/monitoring/alloy-values.yaml"
+
+  kubectl create configmap kafka-worker-dashboard \
+    --namespace monitoring \
+    --from-file=kafka-worker.json="$SCRIPT_DIR/monitoring/dashboards/kafka-worker.json" \
+    --dry-run=client -o yaml | kubectl apply -f -
+  kubectl label configmap kafka-worker-dashboard \
+    --namespace monitoring grafana_dashboard=1 --overwrite
 
   helm upgrade --install kiali kiali/kiali-server \
     --namespace monitoring --create-namespace --wait --timeout 5m \
