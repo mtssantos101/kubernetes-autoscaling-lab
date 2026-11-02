@@ -1,0 +1,6 @@
+apiVersion: v2
+name: messages-api
+description: API de mensagens e sua configuração de autoscaling
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

@@ -1,0 +1,26 @@
+image: messages-api:local
+imagePullPolicy: IfNotPresent
+replicaCount: 1
+containerPort: 8080
+kafkaBootstrapServers: localhost:9092
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+probes:
+  startup:
+    periodSeconds: 5
+    failureThreshold: 36
+  readiness:
+    periodSeconds: 5
+    timeoutSeconds: 1
+    failureThreshold: 3
+autoscaling:
+  minReplicas: 1
+  maxReplicas: 10
+  pollingInterval: 5
+  cooldownPeriod: 30
+  cpuTarget: 60
