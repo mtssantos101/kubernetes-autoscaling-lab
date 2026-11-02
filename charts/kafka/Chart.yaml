@@ -1,0 +1,6 @@
+apiVersion: v2
+name: kafka
+description: Broker Kafka KRaft de nó único para Kind e desenvolvimento local
+type: application
+version: 0.1.0
+appVersion: "4.1.0"

@@ -1,0 +1,10 @@
+image: apache/kafka:4.1.0
+replicaCount: 1
+brokerPort: 9092
+controllerPort: 9093
+partitions: 3
+readinessProbe:
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  timeoutSeconds: 5
+  failureThreshold: 12
