@@ -107,7 +107,7 @@ install_cluster_dependencies() {
   helm repo add kedacore https://kedacore.github.io/charts
   helm repo update
   helm upgrade --install keda kedacore/keda \
-    --namespace kube-system --wait --timeout 5m
+    --namespace keda --create-namespace --wait --timeout 5m
 
   helm repo add metrics-server https://kubernetes-sigs.github.io/metrics-server/
   helm repo update
@@ -188,7 +188,6 @@ deploy_application() {
     --set-string image="$APP_IMAGE" \
     --set-string kafkaBootstrapServers="${KAFKA_BOOTSTRAP_SERVERS:-localhost:9092}" \
     --set containerPort="$APP_PORT" \
-    --set replicaCount="$MIN_REPLICAS" \
     --set autoscaling.minReplicas="$MIN_REPLICAS" \
     --set autoscaling.maxReplicas="$MAX_REPLICAS" \
     --set autoscaling.cpuTarget="$CPU_TARGET"
