@@ -9,7 +9,7 @@ set -Eeuo pipefail
 # Se API_URL for definida, o script não cria port-forward.
 # Exemplo: API_URL=http://localhost:8080/messages ./load-test.sh
 
-NAMESPACE="${NAMESPACE:-keda-demo}"
+NAMESPACE="${NAMESPACE:-autoscaling-lab}"
 APP_NAME="${APP_NAME:-messages-api}"
 APP_PORT="${APP_PORT:-8080}"
 PORT_FORWARD_TIMEOUT="${PORT_FORWARD_TIMEOUT:-60}"
