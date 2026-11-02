@@ -1,0 +1,19 @@
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: {{ .Values.nodePool.name }}
+spec:
+  disruption:
+    consolidationPolicy: {{ .Values.nodePool.disruption.consolidationPolicy }}
+    consolidateAfter: {{ .Values.nodePool.disruption.consolidateAfter }}
+  limits:
+    cpu: {{ .Values.nodePool.limits.cpu | quote }}
+  template:
+    spec:
+      expireAfter: {{ .Values.nodePool.template.expireAfter }}
+      requirements:
+        {{- toYaml .Values.nodePool.template.requirements | nindent 8 }}
+      nodeClassRef:
+        group: karpenter.kwok.sh
+        kind: KWOKNodeClass
+        name: {{ .Values.nodeClass.name }}

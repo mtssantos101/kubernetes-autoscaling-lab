@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.dashboardConfigMap.name }}
+  labels:
+    {{ .Values.dashboardConfigMap.label }}: {{ .Values.dashboardConfigMap.labelValue | quote }}
+data:
+  kafka-worker.json: |-
+    {{- tpl (.Files.Get "dashboards/kafka-worker.json") . | nindent 4 }}
