@@ -6,7 +6,6 @@ metadata:
     app.kubernetes.io/name: messages-api
     app.kubernetes.io/instance: {{ .Release.Name }}
 spec:
-  replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
       app: {{ .Release.Name }}
