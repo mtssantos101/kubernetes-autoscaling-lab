@@ -4,7 +4,7 @@ GRAFANA_SERVICE ?= grafana
 PROMETHEUS_LOCAL_PORT ?= 9090
 GRAFANA_LOCAL_PORT ?= 3000
 
-.PHONY: help port-forward port-forward-prometheus port-forward-grafana
+.PHONY: help port-forward-observability port-forward-prometheus port-forward-grafana
 
 help:
 	@echo "make port-forward-observability        Encaminha Prometheus e Grafana juntos"
