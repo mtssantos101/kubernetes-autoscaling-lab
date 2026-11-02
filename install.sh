@@ -112,7 +112,7 @@ install_cluster_dependencies() {
   helm repo add metrics-server https://kubernetes-sigs.github.io/metrics-server/
   helm repo update
   local metrics_args=()
-  [[ "$LOCAL_MODE" == "true" ]] && metrics_args+=(--set 'args={--kubelet-insecure-tls}')
+  [[ "$LOCAL_MODE" == "true" ]] && metrics_args+=(--values "$SCRIPT_DIR/config/helm/metrics-server-local.yaml")
   helm upgrade --install metrics-server metrics-server/metrics-server \
     --namespace kube-system --wait --timeout 5m "${metrics_args[@]}"
 }
@@ -130,194 +130,68 @@ install_kwok_karpenter() {
     kubectl apply -f kwok/charts/crds
     helm upgrade --install karpenter ./kwok/charts \
       --namespace kube-system --skip-crds \
-      --set controller.image.repository=kind.local/kwok \
-      --set controller.image.tag=latest \
-      --set controller.resources.requests.cpu=1 \
-      --set controller.resources.requests.memory=1Gi \
-      --set settings.preferencePolicy=Ignore \
-      --set settings.featureGates.staticCapacity=false \
-      --set settings.featureGates.capacityBuffer=false \
+      --values "$SCRIPT_DIR/config/helm/karpenter-kwok.yaml" \
       --wait --timeout 5m
   )
   rm -rf -- "$KARPENTER_SOURCE_DIR"
   KARPENTER_SOURCE_DIR=""
+
+  adopt_helm_resources kube-system karpenter-kwok-config \
+    kwoknodeclasses.karpenter.kwok.sh/default nodepools.karpenter.sh/default
+  helm upgrade --install karpenter-kwok-config "$SCRIPT_DIR/charts/karpenter-kwok-config" \
+    --namespace kube-system --wait --timeout 5m
 }
 
 create_application_namespace() {
   kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
 }
 
+adopt_helm_resources() {
+  local namespace="$1" release="$2" resource owner
+  shift 2
+
+  helm status "$release" --namespace "$namespace" >/dev/null 2>&1 && return 0
+
+  for resource in "$@"; do
+    kubectl get "$resource" --namespace "$namespace" >/dev/null 2>&1 || continue
+    owner="$(kubectl get "$resource" --namespace "$namespace" \
+      -o jsonpath='{.metadata.annotations.meta\.helm\.sh/release-name}')"
+    if [[ -n "$owner" && "$owner" != "$release" ]]; then
+      echo "ERRO: $resource já pertence ao release Helm '$owner' em $namespace." >&2
+      return 1
+    fi
+    kubectl label "$resource" --namespace "$namespace" \
+      app.kubernetes.io/managed-by=Helm --overwrite >/dev/null
+    kubectl annotate "$resource" --namespace "$namespace" \
+      "meta.helm.sh/release-name=$release" \
+      "meta.helm.sh/release-namespace=$namespace" --overwrite >/dev/null
+  done
+}
+
 install_local_kafka() {
   [[ "$LOCAL_MODE" == "true" ]] || return 0
 
   KAFKA_BOOTSTRAP_SERVERS="${KAFKA_BOOTSTRAP_SERVERS:-kafka.${NAMESPACE}.svc.cluster.local:9092}"
-  NAMESPACE="$NAMESPACE" envsubst <<'YAML' | kubectl apply -f -
-apiVersion: v1
-kind: Service
-metadata:
-  name: kafka
-  namespace: ${NAMESPACE}
-spec:
-  selector:
-    app: kafka
-  ports:
-    - name: broker
-      port: 9092
-      targetPort: 9092
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: kafka
-  namespace: ${NAMESPACE}
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: kafka
-  template:
-    metadata:
-      labels:
-        app: kafka
-    spec:
-      containers:
-        - name: kafka
-          image: apache/kafka:4.1.0
-          ports:
-            - name: broker
-              containerPort: 9092
-            - name: controller
-              containerPort: 9093
-          env:
-            - name: KAFKA_NODE_ID
-              value: "1"
-            - name: KAFKA_PROCESS_ROLES
-              value: broker,controller
-            - name: KAFKA_LISTENERS
-              value: PLAINTEXT://:9092,CONTROLLER://:9093
-            - name: KAFKA_ADVERTISED_LISTENERS
-              value: PLAINTEXT://kafka.${NAMESPACE}.svc.cluster.local:9092
-            - name: KAFKA_CONTROLLER_LISTENER_NAMES
-              value: CONTROLLER
-            - name: KAFKA_LISTENER_SECURITY_PROTOCOL_MAP
-              value: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
-            - name: KAFKA_CONTROLLER_QUORUM_VOTERS
-              value: 1@localhost:9093
-            - name: KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR
-              value: "1"
-            - name: KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR
-              value: "1"
-            - name: KAFKA_TRANSACTION_STATE_LOG_MIN_ISR
-              value: "1"
-            - name: KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS
-              value: "0"
-            - name: KAFKA_NUM_PARTITIONS
-              value: "3"
-          readinessProbe:
-            exec:
-              command:
-                - /opt/kafka/bin/kafka-broker-api-versions.sh
-                - --bootstrap-server
-                - localhost:9092
-            initialDelaySeconds: 10
-            periodSeconds: 5
-            timeoutSeconds: 5
-            failureThreshold: 12
-YAML
+  adopt_helm_resources "$NAMESPACE" kafka svc/kafka deployment/kafka
+  helm upgrade --install kafka "$SCRIPT_DIR/charts/kafka" \
+    --namespace "$NAMESPACE" --create-namespace --wait --timeout 180s
 
   echo "Aguardando o Kafka local..."
   kubectl rollout status deployment/kafka -n "$NAMESPACE" --timeout=180s
 }
 
 deploy_application() {
-  APP_IMAGE="$APP_IMAGE" \
-  KAFKA_BOOTSTRAP_SERVERS="${KAFKA_BOOTSTRAP_SERVERS:-localhost:9092}" \
-  NAMESPACE="$NAMESPACE" \
-  APP_NAME="$APP_NAME" \
-  APP_PORT="$APP_PORT" \
-  MIN_REPLICAS="$MIN_REPLICAS" \
-  MAX_REPLICAS="$MAX_REPLICAS" \
-  CPU_TARGET="$CPU_TARGET" \
-  envsubst <<'YAML' | kubectl apply -f -
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: ${APP_NAME}
-  namespace: ${NAMESPACE}
-spec:
-  replicas: ${MIN_REPLICAS}
-  selector:
-    matchLabels:
-      app: ${APP_NAME}
-  template:
-    metadata:
-      labels:
-        app: ${APP_NAME}
-      annotations:
-        prometheus.io/scrape: "true"
-        prometheus.io/path: /actuator/prometheus
-        prometheus.io/port: "${APP_PORT}"
-    spec:
-      containers:
-        - name: app
-          image: ${APP_IMAGE}
-          imagePullPolicy: IfNotPresent
-          env:
-            - name: KAFKA_BOOTSTRAP_SERVERS
-              value: ${KAFKA_BOOTSTRAP_SERVERS}
-          ports:
-            - containerPort: ${APP_PORT}
-          startupProbe:
-            tcpSocket:
-              port: ${APP_PORT}
-            periodSeconds: 5
-            failureThreshold: 36
-          readinessProbe:
-            tcpSocket:
-              port: ${APP_PORT}
-            periodSeconds: 5
-            timeoutSeconds: 1
-            failureThreshold: 3
-          resources:
-            requests:
-              cpu: 100m
-              memory: 128Mi
-            limits:
-              cpu: 500m
-              memory: 512Mi
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: ${APP_NAME}
-  namespace: ${NAMESPACE}
-spec:
-  selector:
-    app: ${APP_NAME}
-  ports:
-    - name: http
-      port: ${APP_PORT}
-      targetPort: ${APP_PORT}
-  type: ClusterIP
----
-apiVersion: keda.sh/v1alpha1
-kind: ScaledObject
-metadata:
-  name: ${APP_NAME}-scaler
-  namespace: ${NAMESPACE}
-spec:
-  scaleTargetRef:
-    name: ${APP_NAME}
-  pollingInterval: 5
-  cooldownPeriod: 30
-  minReplicaCount: ${MIN_REPLICAS}
-  maxReplicaCount: ${MAX_REPLICAS}
-  triggers:
-    - type: cpu
-      metricType: Utilization
-      metadata:
-        value: "${CPU_TARGET}"
-YAML
+  adopt_helm_resources "$NAMESPACE" "$APP_NAME" \
+    "deployment/$APP_NAME" "service/$APP_NAME" "scaledobject/$APP_NAME-scaler"
+  helm upgrade --install "$APP_NAME" "$SCRIPT_DIR/charts/messages-api" \
+    --namespace "$NAMESPACE" --create-namespace --wait --timeout 5m \
+    --set-string image="$APP_IMAGE" \
+    --set-string kafkaBootstrapServers="${KAFKA_BOOTSTRAP_SERVERS:-localhost:9092}" \
+    --set containerPort="$APP_PORT" \
+    --set replicaCount="$MIN_REPLICAS" \
+    --set autoscaling.minReplicas="$MIN_REPLICAS" \
+    --set autoscaling.maxReplicas="$MAX_REPLICAS" \
+    --set autoscaling.cpuTarget="$CPU_TARGET"
 }
 
 wait_for_deployment() {
@@ -326,41 +200,33 @@ wait_for_deployment() {
 }
 
 install_observability_tools() {
-  echo "Instalando ferramentas de observabilidade (Prometheus, Loki, Alloy, Grafana, Kiali)..."
+  echo "Instalando ferramentas de observabilidade (Prometheus, Loki, Alloy, Grafana)..."
   helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
   helm repo add grafana-community https://grafana-community.github.io/helm-charts
   helm repo add grafana https://grafana.github.io/helm-charts
-  helm repo add kiali https://kiali.org/helm-charts
   helm repo update
 
   helm upgrade --install loki grafana-community/loki \
     --namespace monitoring --create-namespace --wait --timeout 10m \
-    --values "$SCRIPT_DIR/monitoring/loki-values.yaml"
+    --values "$SCRIPT_DIR/config/helm/observability/loki.yaml"
 
   helm upgrade --install prometheus prometheus-community/prometheus \
     --namespace monitoring --create-namespace --wait --timeout 5m
 
   helm upgrade --install grafana grafana-community/grafana \
     --namespace monitoring --create-namespace --wait --timeout 5m \
-    --set adminPassword=admin \
-    --set service.type=ClusterIP \
-    --set persistence.enabled=false \
-    --values "$SCRIPT_DIR/monitoring/grafana-values.yaml"
+    --values "$SCRIPT_DIR/config/helm/observability/grafana.yaml"
 
   helm upgrade --install alloy grafana/alloy \
     --namespace monitoring --create-namespace --wait --timeout 5m \
-    --values <(envsubst '${NAMESPACE}' < "$SCRIPT_DIR/monitoring/alloy-values.yaml")
+    --values <(envsubst '${NAMESPACE}' < "$SCRIPT_DIR/config/helm/observability/alloy.yaml")
 
-  kubectl create configmap kafka-worker-dashboard \
-    --namespace monitoring \
-    --from-file=kafka-worker.json="$SCRIPT_DIR/monitoring/dashboards/kafka-worker.json" \
-    --dry-run=client -o yaml | kubectl apply -f -
-  kubectl label configmap kafka-worker-dashboard \
-    --namespace monitoring grafana_dashboard=1 --overwrite
-
-  helm upgrade --install kiali kiali/kiali-server \
+  if ! helm status observability-resources --namespace monitoring >/dev/null 2>&1; then
+    kubectl delete configmap kafka-worker-dashboard -n monitoring --ignore-not-found
+  fi
+  helm upgrade --install observability-resources "$SCRIPT_DIR/charts/observability" \
     --namespace monitoring --create-namespace --wait --timeout 5m \
-    --set auth.strategy=anonymous
+    --set-string appName="$APP_NAME"
 }
 
 main() {
