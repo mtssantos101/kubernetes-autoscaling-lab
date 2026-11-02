@@ -1,0 +1,5 @@
+dashboardConfigMap:
+  name: kafka-worker-dashboard
+  label: grafana_dashboard
+  labelValue: "1"
+appName: messages-api

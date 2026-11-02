@@ -1,3 +1,9 @@
+adminPassword: admin
+service:
+  type: ClusterIP
+persistence:
+  enabled: false
+
 datasources:
   datasources.yaml:
     apiVersion: 1
