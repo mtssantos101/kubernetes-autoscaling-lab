@@ -9,6 +9,11 @@ spec:
   cooldownPeriod: {{ .Values.autoscaling.cooldownPeriod }}
   minReplicaCount: {{ .Values.autoscaling.minReplicas }}
   maxReplicaCount: {{ .Values.autoscaling.maxReplicas }}
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleDown:
+          stabilizationWindowSeconds: {{ .Values.autoscaling.scaleDownStabilizationSeconds }}
   triggers:
     - type: cpu
       metricType: Utilization
