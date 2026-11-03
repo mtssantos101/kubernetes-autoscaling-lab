@@ -242,4 +242,4 @@ main() {
   install_observability_tools
 }
 
-main "$@"
+main "$@"; exit
