@@ -2,7 +2,7 @@ image: messages-api:local
 imagePullPolicy: IfNotPresent
 containerPort: 8080
 kafkaBootstrapServers: localhost:9092
-javaToolOptions: "-XX:AccccccccctiveProcessorCount=2 -XX:MaxRAMPercentage=75.0"
+javaToolOptions: "-XX:ActiveProcessorCount=2 -XX:MaxRAMPercentage=75.0"
 resources:
   requests:
     cpu: 250m
