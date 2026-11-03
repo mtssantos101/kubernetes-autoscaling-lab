@@ -27,6 +27,8 @@ spec:
           env:
             - name: KAFKA_BOOTSTRAP_SERVERS
               value: {{ .Values.kafkaBootstrapServers | quote }}
+            - name: JAVA_TOOL_OPTIONS
+              value: {{ .Values.javaToolOptions | quote }}
           ports:
             - name: http
               containerPort: {{ .Values.containerPort }}
