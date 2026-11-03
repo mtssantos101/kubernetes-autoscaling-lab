@@ -35,7 +35,7 @@ public class MessageProducer {
                     }
 
                     published.increment();
-                    logger.info("Mensagem publicada no tópico {}, partição {}, offset {}",
+                    logger.debug("Mensagem publicada no tópico {}, partição {}, offset {}",
                             TOPIC,
                             result.getRecordMetadata().partition(),
                             result.getRecordMetadata().offset());

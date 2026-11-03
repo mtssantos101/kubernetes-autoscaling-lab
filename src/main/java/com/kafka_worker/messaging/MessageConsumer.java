@@ -21,6 +21,6 @@ public class MessageConsumer {
     @KafkaListener(topics = "message.sended")
     public void consume(String messageId) {
         consumed.increment();
-        logger.info("Mensagem recebida pelo consumer: {}", messageId);
+        logger.debug("Mensagem recebida pelo consumer: {}", messageId);
     }
 }

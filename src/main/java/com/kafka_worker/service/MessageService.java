@@ -16,7 +16,7 @@ public class MessageService {
     }
 
     public void processMessage(String messageId) {
-        logger.info("Processando mensagem: {}", messageId);
+        logger.debug("Processando mensagem: {}", messageId);
         messageProducer.publish(messageId);
     }
 }
