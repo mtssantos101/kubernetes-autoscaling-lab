@@ -23,5 +23,4 @@ autoscaling:
   maxReplicas: 10
   pollingInterval: 5
   cooldownPeriod: 30
-  scaleDownStabilizationSeconds: 60
   cpuTarget: 60
